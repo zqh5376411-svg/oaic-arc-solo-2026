@@ -199,7 +199,7 @@ def tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "run_validation",
-                "description": "Build the frontend and start the backend on a safe smoke port.",
+                "description": "Build the frontend, start the backend on a safe smoke port, and run any project-owned test:e2e or test scripts against it.",
                 "parameters": {"type": "object", "properties": {}},
             },
         },

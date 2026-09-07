@@ -59,13 +59,19 @@ def _safe_environment(**extra: str) -> dict[str, str]:
     return environment
 
 
-def _run(command: list[str], cwd: Path, timeout: int) -> CheckResult:
+def _run(
+    command: list[str],
+    cwd: Path,
+    timeout: int,
+    *,
+    extra_environment: dict[str, str] | None = None,
+) -> CheckResult:
     started = time.monotonic()
     try:
         completed = subprocess.run(
             command,
             cwd=cwd,
-            env=_safe_environment(),
+            env=_safe_environment(**(extra_environment or {})),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -120,13 +126,48 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _startup_check(root: Path, requested_port: int) -> CheckResult:
+def _project_test_commands(root: Path) -> tuple[tuple[str, list[str], Path], ...]:
+    commands: list[tuple[str, list[str], Path]] = []
+    for name in ("frontend", "backend"):
+        directory = root / name
+        try:
+            payload = json.loads((directory / "package.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        scripts = payload.get("scripts") if isinstance(payload, dict) else None
+        if not isinstance(scripts, dict):
+            continue
+        for script in ("test:e2e", "test"):
+            value = str(scripts.get(script) or "").strip()
+            if value and "no test specified" not in value.lower():
+                commands.append(
+                    (f"{name} npm run {script}", ["npm", "run", script], directory)
+                )
+                break
+    return tuple(commands)
+
+
+def _renamed(result: CheckResult, name: str) -> CheckResult:
+    return CheckResult(
+        name=name,
+        passed=result.passed,
+        summary=result.summary,
+        duration_seconds=result.duration_seconds,
+    )
+
+
+def _startup_and_project_tests(
+    root: Path,
+    requested_port: int,
+    project_tests: tuple[tuple[str, list[str], Path], ...],
+) -> tuple[CheckResult, ...]:
     started = time.monotonic()
     port = requested_port or _free_port()
     process: subprocess.Popen[str] | None = None
     output = ""
     passed = False
     summary = "server did not become ready"
+    checks: list[CheckResult] = []
     try:
         process = subprocess.Popen(
             ["npm", "start"],
@@ -155,6 +196,26 @@ def _startup_check(root: Path, requested_port: int) -> CheckResult:
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
                 summary = str(exc)
                 time.sleep(0.2)
+        checks.append(
+            CheckResult(
+                "backend startup", passed, summary, time.monotonic() - started
+            )
+        )
+        if passed:
+            base_url = f"http://127.0.0.1:{port}"
+            for name, command, directory in project_tests:
+                result = _run(
+                    command,
+                    directory,
+                    180,
+                    extra_environment={
+                        "ARCBENCH_BASE_URL": base_url,
+                        "PLAYWRIGHT_BASE_URL": base_url,
+                    },
+                )
+                checks.append(_renamed(result, name))
+                if not result.passed:
+                    break
     except OSError as exc:
         summary = str(exc)
     finally:
@@ -173,11 +234,21 @@ def _startup_check(root: Path, requested_port: int) -> CheckResult:
             except OSError:
                 output = ""
             process.stdout.close()
-    if not passed and output.strip():
-        summary += "\n" + output.strip()
-    return CheckResult(
-        "backend startup", passed, summary, time.monotonic() - started
-    )
+    if not checks:
+        checks.append(
+            CheckResult(
+                "backend startup", False, summary, time.monotonic() - started
+            )
+        )
+    if not checks[0].passed and output.strip():
+        first = checks[0]
+        checks[0] = CheckResult(
+            first.name,
+            False,
+            first.summary + "\n" + output.strip(),
+            first.duration_seconds,
+        )
+    return tuple(checks)
 
 
 class Validator:
@@ -205,5 +276,11 @@ class Validator:
         if not build.passed:
             return ValidationReport(tuple(checks))
 
-        checks.append(_startup_check(self.root, self.smoke_port))
+        checks.extend(
+            _startup_and_project_tests(
+                self.root,
+                self.smoke_port,
+                _project_test_commands(self.root),
+            )
+        )
         return ValidationReport(tuple(checks))

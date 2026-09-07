@@ -138,6 +138,49 @@ class ValidationTests(unittest.TestCase):
             self.assertIn("frontend/src/index.html", outcome.changed_files)
             self.assertEqual(outcome.turns, 2)
 
+    def test_runs_project_owned_test_against_live_server(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            root = Path(value)
+            scaffold_project(REPO_ROOT / "templates" / "web", root)
+            package_path = root / "backend" / "package.json"
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            package["scripts"]["test"] = "node test-live.mjs"
+            package_path.write_text(json.dumps(package), encoding="utf-8")
+            (root / "backend" / "test-live.mjs").write_text(
+                """const base = process.env.ARCBENCH_BASE_URL;
+if (!base) throw new Error("ARCBENCH_BASE_URL is missing");
+const response = await fetch(`${base}/api/health`);
+if (!response.ok) throw new Error(`health returned ${response.status}`);
+""",
+                encoding="utf-8",
+            )
+
+            report = Validator(root).validate()
+
+            self.assertTrue(report.passed, report.summary)
+            self.assertIn("backend npm run test", [check.name for check in report.checks])
+
+    def test_project_owned_test_failure_fails_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            root = Path(value)
+            scaffold_project(REPO_ROOT / "templates" / "web", root)
+            package_path = root / "backend" / "package.json"
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            package["scripts"]["test"] = "node test-fail.mjs"
+            package_path.write_text(json.dumps(package), encoding="utf-8")
+            (root / "backend" / "test-fail.mjs").write_text(
+                "throw new Error('expected project test failure');\n",
+                encoding="utf-8",
+            )
+
+            report = Validator(root).validate()
+
+            self.assertFalse(report.passed)
+            failure = next(
+                check for check in report.checks if check.name == "backend npm run test"
+            )
+            self.assertIn("expected project test failure", failure.summary)
+
 
 if __name__ == "__main__":
     unittest.main()

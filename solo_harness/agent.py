@@ -21,8 +21,10 @@ Rules:
 - Keep frontend buildable with `npm run build` and backend startable with `npm start` using PORT.
 - Implement behavior end to end and persist mutable state in the backend when requirements imply persistence.
 - Put authorization, validation, and state-transition rules in backend logic, not only disabled UI controls.
+- Return meaningful HTTP status codes: malformed client input is 4xx and genuinely missing API/static resources are 404; never send 200 before confirming a static file can be served.
 - Use visible labels, semantic plain-text buttons, type="text" inputs, and local DOM status/error messages.
 - Do not use alert(), confirm(), prompt(), screenshots, hard-coded test answers, or hidden-test guesses.
+- Add focused project-owned tests for requirement scenarios and API error cases when practical. Register them as a frontend/backend `test:e2e` or `test` script; target ARCBENCH_BASE_URL or PLAYWRIGHT_BASE_URL supplied by validation instead of starting another server.
 - Make the smallest coherent change. Read related files together, then write them in batches.
 - Call run_validation once after the planned edits and repair every reported failure before stopping.
 Return a short summary only after the implementation is ready."""

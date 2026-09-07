@@ -2,7 +2,7 @@
 
 面向 **OAIC 2026 智能体软件工厂 / ARC-Bench** 的轻量 Coding Agent。
 
-当前是 `v0.1` 备赛基线：入口、受限文件工具、生产轨迹、构建检查和启动冒烟已经落地；尚未在官方平台提交或取得分数。
+当前是 `v0.2` 备赛基线：入口、受限文件工具、生产轨迹、构建与启动冒烟、生成项目自有测试执行已经落地；尚未在官方平台提交或取得分数。
 
 ## 为什么这样做
 
@@ -58,6 +58,7 @@ python3 -m venv .venv
 - 提供 `list_files`、`read_files`、`write_file`、`replace_text`、`run_validation` 五个受限工具。
 - 只允许 Agent 写入生成目录下的 `frontend/` 与 `backend/`。
 - 前端执行 `npm install` 和 `npm run build`；后端在随机独立端口启动并探活。
+- 如生成项目注册了 `test:e2e` 或 `test` 脚本，Harness 会在后端运行期间执行，并注入 `ARCBENCH_BASE_URL` 与 `PLAYWRIGHT_BASE_URL`。
 - 最终检查失败时，只给 Agent 一次定向修复机会。
 - 写入 `.arc/runner-events.jsonl`、`.arc/production-trace.jsonl` 与基础 traceability 状态。
 - 在生成目录创建 Git checkpoint，便于平台展示和复盘。
@@ -66,7 +67,7 @@ python3 -m venv .venv
 
 - 官方 Codex 课程与参考实现链接尚未发布，本版本按当前公开 ARC-Bench 契约实现。
 - 尚未连接官方模型网关，也未跑公开题或隐藏测试。
-- Traceability 目前只覆盖需求树和节点状态，接口/测试映射会在研习营材料明确后补齐。
+- Traceability 目前只覆盖需求树和节点状态；项目自有测试已能执行，但接口/用例映射仍要等研习营材料明确。
 
 ## 参考
 
