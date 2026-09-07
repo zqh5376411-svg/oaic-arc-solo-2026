@@ -1,0 +1,14 @@
+id: ROOT
+name: Demo project
+description: Build a tiny task board used only to exercise the local harness.
+children:
+  - id: task-list
+    name: Task list
+    description: Show persisted tasks with title and status.
+    scenarios:
+      - id: add-task
+        name: Add a task
+        steps:
+          - Enter a title in a visibly labelled text field.
+          - Select Add task.
+          - The new task appears without a page refresh.
