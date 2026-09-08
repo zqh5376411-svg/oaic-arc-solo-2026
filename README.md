@@ -65,9 +65,11 @@ python3 -m venv .venv
 
 ## 当前边界
 
-- 官方 Codex 课程与参考实现链接尚未发布，本版本按当前公开 ARC-Bench 契约实现。
+- 官方 Codex 课程与参考实现链接尚未发布；ARC-Bench API Doc 已公开内置 Runtime SDK，但本版本尚未在官方环境验证或切换到该 SDK。
 - 尚未连接官方模型网关，也未跑公开题或隐藏测试。
 - Traceability 目前只覆盖需求树和节点状态；项目自有测试已能执行，但接口/用例映射仍要等研习营材料明确。
+
+2026-09-08 核对的官方事实、页面冲突和待答疑问题见 [docs/OFFICIAL_QUESTIONS.md](docs/OFFICIAL_QUESTIONS.md)。
 
 ## 参考
 
