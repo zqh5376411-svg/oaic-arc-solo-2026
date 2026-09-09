@@ -36,9 +36,13 @@
 
 只有“能构建、能启动”不足以发现业务和 HTTP 语义错误。借鉴 HAFleet 的项目测试发现方式和 Octos 的最终 API 验收思路，Harness 现在会在独立冒烟端口运行时发现并执行前后端 `test:e2e` 或 `test` 脚本。没有注册测试的旧项目仍兼容，避免把通用 Harness 绑死在某道题的 API 上。
 
+### 7. 官方 Runtime SDK 优先，本地实现兜底
+
+运行时存在 `arcbench_agent_runtime` 时，事件、需求树和 Git checkpoint 全部交给官方 SDK；仅在本地缺少该包时保留原有轻量实现，方便低版本 Python 继续开发。SDK 已存在但初始化失败时直接报错，不把真实兼容问题悄悄藏进兜底路径。
+
 ## 待官方材料确认
 
 - Codex 参考实现是否提供可复用运行时。
-- Runner 事件与 traceability 的最终字段要求。
+- 官方 Runner 环境预装的 Runtime SDK 版本及 Python 版本。
 - 公开题包、提交包上限、依赖安装与网络限制。
 - 是否必须上传 GitHub URL，或由 ARC-Bench 直接上传压缩包。

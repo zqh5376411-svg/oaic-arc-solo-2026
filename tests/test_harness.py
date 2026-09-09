@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import ModuleType
+from unittest.mock import Mock, patch
 
 from solo_harness.agent import CodingAgent
 from solo_harness.model import OpenAIChatClient
@@ -66,17 +69,67 @@ class WorkspaceTests(unittest.TestCase):
 
 
 class RuntimeTests(unittest.TestCase):
-    def test_writes_runner_event_and_traceability(self) -> None:
+    def test_local_fallback_writes_runner_event_and_traceability(self) -> None:
         with tempfile.TemporaryDirectory() as value:
-            runtime = Runtime(Path(value))
+            with patch(
+                "solo_harness.runtime._load_official_runtime", return_value=None
+            ):
+                runtime = Runtime(Path(value))
             runtime.runner_state("running", "test")
             runtime.requirement_state("R1", "design", "running")
+            self.assertEqual(runtime.backend, "local-fallback")
             event = json.loads(runtime.events_path.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(event["type"], "runner_state")
             states = json.loads(
                 (runtime.traceability_dir / "node_states.json").read_text(encoding="utf-8")
             )
             self.assertEqual(states["R1"]["status"], "running")
+
+    def test_prefers_official_runtime_for_events_traceability_and_git(self) -> None:
+        sdk = Mock()
+        sdk.git.current_head.return_value = "official-head"
+        factory = Mock()
+        factory.from_env.return_value = sdk
+        module = ModuleType("arcbench_agent_runtime")
+        module.AgentRuntime = factory  # type: ignore[attr-defined]
+        requirement_tree = {"id": "ROOT", "children": [{"id": "R1"}]}
+
+        with tempfile.TemporaryDirectory() as value, patch.dict(
+            sys.modules, {"arcbench_agent_runtime": module}
+        ):
+            root = Path(value).resolve()
+            runtime = Runtime(root)
+            runtime.runner_state("running", "start")
+            runtime.runner_state("completed", "done")
+            runtime.runner_state("failed", "broken")
+            runtime.requirement_state("R1", "design", "running")
+            runtime.requirement_state("R1", "design", "completed")
+            runtime.requirement_state("R1", "implement", "running")
+            runtime.requirement_state("R1", "implement", "completed")
+            runtime.requirement_state("R1", "implement", "failed")
+            runtime.requirement_state("R1", "test", "passed")
+            runtime.requirement_state("R1", "test", "failed")
+            runtime.store_requirement_tree(requirement_tree)
+            revision = runtime.checkpoint("checkpoint")
+
+        self.assertEqual(runtime.backend, "official-sdk")
+        factory.from_env.assert_called_once_with(project_dir=str(root))
+        sdk.events.mark_run_started.assert_called_once_with("start")
+        sdk.events.mark_run_completed.assert_called_once_with("done")
+        sdk.events.mark_run_failed.assert_called_once_with("broken")
+        sdk.events.mark_design_started.assert_called_once_with("R1", None)
+        sdk.events.mark_design_done.assert_called_once_with("R1", None)
+        sdk.events.mark_implementation_started.assert_called_once_with("R1", None)
+        sdk.events.mark_implementation_done.assert_called_once_with("R1", None)
+        sdk.events.mark_implementation_failed.assert_called_once_with("R1", None)
+        sdk.events.mark_test_passed.assert_called_once_with("R1", None)
+        sdk.events.mark_test_failed.assert_called_once_with("R1", None)
+        sdk.traceability.init_store.assert_called_once_with()
+        sdk.traceability.store_requirement_tree.assert_called_once_with(requirement_tree)
+        sdk.git.ensure_repo.assert_called_once_with(create_initial_commit=False)
+        sdk.git.commit.assert_called_once_with("checkpoint")
+        self.assertEqual(revision, "official-head")
+        self.assertFalse(runtime.events_path.exists())
 
 
 class ModelTests(unittest.TestCase):

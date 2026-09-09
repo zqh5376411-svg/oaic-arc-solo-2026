@@ -64,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=str(output_dir),
             web_port=web_port,
             dry_run=args.dry_run,
+            runtime_backend=runtime.backend,
         )
 
         template_root = Path(__file__).resolve().parent.parent / "templates" / "web"

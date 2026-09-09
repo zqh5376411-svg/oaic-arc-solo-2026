@@ -49,9 +49,40 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _load_official_runtime(project_dir: Path) -> Any | None:
+    try:
+        from arcbench_agent_runtime import AgentRuntime
+    except ModuleNotFoundError as exc:
+        if exc.name == "arcbench_agent_runtime":
+            return None
+        raise
+    return AgentRuntime.from_env(project_dir=str(project_dir))
+
+
+_RUNNER_EVENT_METHODS = {
+    "running": "mark_run_started",
+    "completed": "mark_run_completed",
+    "failed": "mark_run_failed",
+    "paused": "mark_run_paused",
+    "resumed": "mark_run_resumed",
+}
+
+_REQUIREMENT_EVENT_METHODS = {
+    ("design", "running"): "mark_design_started",
+    ("design", "completed"): "mark_design_done",
+    ("design", "failed"): "mark_design_failed",
+    ("implement", "running"): "mark_implementation_started",
+    ("implement", "completed"): "mark_implementation_done",
+    ("implement", "failed"): "mark_implementation_failed",
+    ("test", "passed"): "mark_test_passed",
+    ("test", "failed"): "mark_test_failed",
+}
+
+
 class Runtime:
     def __init__(self, project_dir: Path) -> None:
         self.project_dir = project_dir.resolve()
+        self._official = _load_official_runtime(self.project_dir)
         events_value = os.environ.get(
             "ARCBENCH_RUNNER_EVENTS_PATH", ".arc/runner-events.jsonl"
         )
@@ -65,7 +96,17 @@ class Runtime:
         self.events_path.parent.mkdir(parents=True, exist_ok=True)
         self.traceability_dir.mkdir(parents=True, exist_ok=True)
 
+    @property
+    def backend(self) -> str:
+        return "official-sdk" if self._official is not None else "local-fallback"
+
     def runner_state(self, state: str, message: str = "") -> None:
+        if self._official is not None:
+            method_name = _RUNNER_EVENT_METHODS.get(state)
+            if method_name is None:
+                raise ValueError(f"unsupported runner state: {state}")
+            getattr(self._official.events, method_name)(message or None)
+            return
         _append_jsonl(
             self.events_path,
             {
@@ -79,6 +120,14 @@ class Runtime:
     def requirement_state(
         self, node_id: str, phase: str, status: str, message: str = ""
     ) -> None:
+        if self._official is not None:
+            method_name = _REQUIREMENT_EVENT_METHODS.get((phase, status))
+            if method_name is None:
+                raise ValueError(
+                    f"unsupported requirement state: {phase}/{status}"
+                )
+            getattr(self._official.events, method_name)(node_id, message or None)
+            return
         _append_jsonl(
             self.events_path,
             {
@@ -107,6 +156,10 @@ class Runtime:
         )
 
     def store_requirement_tree(self, root: dict[str, Any]) -> None:
+        if self._official is not None:
+            self._official.traceability.init_store()
+            self._official.traceability.store_requirement_tree(root)
+            return
         requirements: dict[str, Any] = {}
         scenarios: dict[str, Any] = {}
 
@@ -150,6 +203,10 @@ class Runtime:
         _write_json(self.traceability_dir / "scenarios.json", scenarios)
 
     def checkpoint(self, message: str) -> str | None:
+        if self._official is not None:
+            self._official.git.ensure_repo(create_initial_commit=False)
+            self._official.git.commit(message)
+            return self._official.git.current_head()
         self._ensure_repository()
         self._git("add", ".")
         committed = self._git("commit", "-m", message, check=False)

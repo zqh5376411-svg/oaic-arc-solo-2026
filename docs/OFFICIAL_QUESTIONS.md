@@ -1,13 +1,13 @@
 # OAIC / ARC-Bench 官方信息与待确认问题
 
-> 最后核对：2026-09-08（北京时间）  
-> 原则：只把第一方页面明确写出的内容列为“已确认”；页面没有给出的细节一律标记为“未确认”。
+> 最后核对：2026-09-09（北京时间）
+> 原则：只把第一方页面或官方包仓库可核验的内容列为“已确认”；没有给出的细节一律标记为“未确认”。
 
 ## 今天的结论
 
-我们的 `v0.2` 已经具备 Python 入口、可运行生成物、构建/启动验证、项目自有测试和本地轨迹，但现在出现了一个必须优先确认的兼容风险：ARC-Bench API 文档要求 Agent 调用内置 `arcbench_agent_runtime` SDK，并明确要求不要手工构造事件；当前仓库仍由 `solo_harness/runtime.py` 自行写 `.arc/runner-events.jsonl`、Traceability JSON 和 Git 通知。
+我们的 `v0.3` 已改为优先调用 `arcbench_agent_runtime`：Runner 事件、需求树状态和 Git checkpoint 均走 SDK；只有本地缺少该包时才使用原轻量兜底。公开的 PyPI 0.1.0 包已完成一次干跑和一次带模拟模型网关的完整跑题。
 
-在官方运行环境验证 SDK 之前，不能把当前自写格式称为“已兼容官方协议”。
+这消除了“已安装 SDK 却仍手写官方事件”的已知差距，但赛事 Runner 的预装版本、固定 CLI、模型网关和隐藏测试仍未验证，因此不能称为“已通过官方协议验收”。
 
 ## 已确认
 
@@ -33,6 +33,7 @@
 
 - 官方页面要求 Agent 使用内置 Python 包 `arcbench_agent_runtime`；SDK 负责固定事件协议、`.arc/runner-events.jsonl`、`.arc/traceability/*.json` 和 Git/前端刷新通知。[API Doc](http://arc-bench.com/api-doc)
 - API 文档明确写着不要手工构造事件 payload，应调用 SDK 的高级方法。[API Doc](http://arc-bench.com/api-doc)
+- PyPI 当前公开的 `arcbench-runtime` 最新版本为 0.1.0，并声明需要 Python 3.10 及以上。[PyPI](https://pypi.org/project/arcbench-runtime/)
 - 页面公开了节点状态 API，例如 `mark_design_done`、`mark_implementation_done`、`mark_test_passed`、`mark_test_failed` 与整次运行的开始/完成/失败状态。[API Doc](http://arc-bench.com/api-doc)
 - Traceability API 覆盖 requirements、scenarios、interfaces、tests、node states、call edges 和 node contracts；Git API 覆盖建仓、提交、回滚、重置与状态读取。[API Doc](http://arc-bench.com/api-doc)
 - 上传入口文件已明确：Python 使用 `main.py` + `requirements.txt`，JavaScript 使用 `index.js` + `package.json`，TypeScript 使用 `index.ts` + `package.json`；存在 `package.json` 时 Runner 会先安装 Node 依赖。[API Doc](http://arc-bench.com/api-doc)
@@ -51,8 +52,8 @@
 | Python `main.py` + `requirements.txt` | 已有 | 与公开入口文件要求一致 |
 | 生成可运行 Web 前后端 | 已有 | 本地模拟已验证，官方环境未验证 |
 | 构建、启动和项目自有测试 | 已有 | 本地验证通过 |
-| 生产轨迹与 Git checkpoint | 已有自写实现 | 数据存在，但官方格式兼容性未确认 |
-| `arcbench_agent_runtime` | 尚未接入 | **P0 兼容风险** |
+| 生产轨迹与 Git checkpoint | SDK 优先；本地缺包时兜底 | 公开 SDK 本地模拟通过，赛事 Runner 未验证 |
+| `arcbench_agent_runtime` | 已接入公开的 0.1.x API | 平台预装版本和 Python 版本仍待确认 |
 | 完整固定 CLI 与环境变量 | 依据公开参考仓库实现 | API 页面未完整列出，仍需官方确认 |
 | 官方模型网关与隐藏 Playwright 测试 | 尚未接入 | 未验证，不能视为官方成绩 |
 
@@ -62,7 +63,7 @@
 
 1. **赛事账号是否已启用？** 现在能否直接用报名邮箱选择 “Hackathon account” 登录，还是必须等待组织方通知？——未确认。
 2. **固定启动合同是什么？** Python Agent 的完整命令行参数、必需环境变量、requirements 输入位置、项目输出位置分别是什么？——未确认。
-3. **Runtime SDK 是否强制？** `arcbench_agent_runtime` 的预装版本和导入方式是什么；手写 JSONL/Traceability 是否会被拒绝或无法刷新 UI？——API 页面要求使用 SDK，但平台强制程度及版本未确认。
+3. **Runtime SDK 的平台合同是什么？** `arcbench_agent_runtime` 的预装版本、Python 版本和导入方式是什么；若包不存在，是否允许本地兜底，还是会直接拒绝？——公开包 0.1.0 已知，但赛事环境未确认。
 4. **究竟提交什么？** 只上传 Agent 包，还是还要人工上传源码、生产轨迹与 3–5 分钟 Demo？Demo 的格式、入口和截止时间是什么？——官网页面表述冲突。
 5. **初赛运行与提交限制是什么？** 每队每天/全程可运行几次，能否重复提交，排行榜取最好一次、最后一次还是平均值？——未确认。
 6. **09-30 的具体截止时刻和时区是什么？**——未确认。
@@ -86,7 +87,7 @@
 > 大家好，我们是单人自研 Python Harness 队伍，想确认以下会直接影响兼容与提交的问题：  
 > 1. 现在可以用报名邮箱在 ARC-Bench 选择 “Hackathon account” 登录吗，还是要等单独通知？  
 > 2. Python Agent 的完整启动命令、必需环境变量、输入目录和输出目录合同是什么？  
-> 3. `arcbench_agent_runtime` 是否强制使用？平台预装的版本和完整 API/schema 文档在哪里？手写 `.arc` 事件是否不再兼容？  
+> 3. 平台预装的 `arcbench_agent_runtime` 与 Python 分别是什么版本？如果包不存在，是否允许兼容兜底？完整 API/schema 文档在哪里？
 > 4. 最终到底只上传 Agent 包，还是还需人工提交源码、生产轨迹与 3–5 分钟 Demo？Demo 在哪里提交？  
 > 5. 初赛每队有多少次运行/提交机会，排行榜按最好一次、最后一次还是多次平均？  
 > 6. GUI 通过率、Token、耗时的权重、并列规则分别是什么？  
@@ -96,5 +97,5 @@
 ## 后续处理规则
 
 - 每次官网或答疑更新后，只把得到明确回答的条目从“未确认”移动到“已确认”，并保留来源和核对日期。
-- 在第 2、3 项 P0 问题解决前，不宣称当前 Harness 已通过 ARC-Bench 官方协议验收。
+- 在第 2、3 项 P0 问题解决前，不宣称当前 Harness 已通过 ARC-Bench 官方协议验收；本地 SDK 模拟通过不等于官方成绩。
 - 需要账号、Token、最终上传或点击提交的步骤由参赛者本人完成。

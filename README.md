@@ -2,7 +2,7 @@
 
 面向 **OAIC 2026 智能体软件工厂 / ARC-Bench** 的轻量 Coding Agent。
 
-当前是 `v0.2` 备赛基线：入口、受限文件工具、生产轨迹、构建与启动冒烟、生成项目自有测试执行已经落地；尚未在官方平台提交或取得分数。
+当前是 `v0.3` 备赛基线：入口、受限文件工具、生产轨迹、构建与启动冒烟、生成项目自有测试以及官方 Runtime SDK 优先适配已经落地；尚未在官方平台提交或取得分数。
 
 ## 为什么这样做
 
@@ -39,6 +39,8 @@ python3 main.py <requirements> \
 
 也支持 `ARCBENCH_TASK_DIR`、`ARCBENCH_TEMPLATE_DIR`、`ARCBENCH_WEB_PORT` 等环境变量。密钥只从环境读取，不写入仓库或轨迹。
 
+Python 3.10 及以上会安装公开的 `arcbench-runtime` 0.1.x；SDK 存在时，Harness 使用其 `arcbench_agent_runtime` 接口。低版本 Python 本地开发时会跳过该依赖并使用兼容兜底。
+
 ## 本地验证
 
 ```bash
@@ -60,16 +62,17 @@ python3 -m venv .venv
 - 前端执行 `npm install` 和 `npm run build`；后端在随机独立端口启动并探活。
 - 如生成项目注册了 `test:e2e` 或 `test` 脚本，Harness 会在后端运行期间执行，并注入 `ARCBENCH_BASE_URL` 与 `PLAYWRIGHT_BASE_URL`。
 - 最终检查失败时，只给 Agent 一次定向修复机会。
-- 写入 `.arc/runner-events.jsonl`、`.arc/production-trace.jsonl` 与基础 traceability 状态。
+- 检测到 `arcbench_agent_runtime` 时，由官方 SDK 写 Runner 事件、Traceability 与 Git checkpoint；只有 SDK 不存在时才使用本地兜底。
+- 额外写入不含密钥的 `.arc/production-trace.jsonl`，记录模型和工具调用过程。
 - 在生成目录创建 Git checkpoint，便于平台展示和复盘。
 
 ## 当前边界
 
-- 官方 Codex 课程与参考实现链接尚未发布；ARC-Bench API Doc 已公开内置 Runtime SDK，但本版本尚未在官方环境验证或切换到该 SDK。
+- 官方 Codex 课程与参考实现链接尚未发布；本版本已在本地用公开的 `arcbench-runtime` 0.1.0 跑通完整模拟，但尚未在赛事 Runner 验证其预装版本与启动合同。
 - 尚未连接官方模型网关，也未跑公开题或隐藏测试。
 - Traceability 目前只覆盖需求树和节点状态；项目自有测试已能执行，但接口/用例映射仍要等研习营材料明确。
 
-2026-09-08 核对的官方事实、页面冲突和待答疑问题见 [docs/OFFICIAL_QUESTIONS.md](docs/OFFICIAL_QUESTIONS.md)。
+2026-09-09 核对的官方事实、页面冲突和待答疑问题见 [docs/OFFICIAL_QUESTIONS.md](docs/OFFICIAL_QUESTIONS.md)。
 
 ## 参考
 
