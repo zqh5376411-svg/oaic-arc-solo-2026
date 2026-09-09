@@ -57,6 +57,7 @@ python3 -m venv .venv
 ## 当前能力
 
 - 读取并校验 ROOT `requirements.yaml`。
+- 只把叶子需求作为执行节点，并为缺少 ID 的场景生成稳定 Traceability ID。
 - 提供 `list_files`、`read_files`、`write_file`、`replace_text`、`run_validation` 五个受限工具。
 - 只允许 Agent 写入生成目录下的 `frontend/` 与 `backend/`。
 - 前端执行 `npm install` 和 `npm run build`；后端在随机独立端口启动并探活。
@@ -73,6 +74,8 @@ python3 -m venv .venv
 - Traceability 目前只覆盖需求树和节点状态；项目自有测试已能执行，但接口/用例映射仍要等研习营材料明确。
 
 2026-09-09 核对的官方事实、页面冲突和待答疑问题见 [docs/OFFICIAL_QUESTIONS.md](docs/OFFICIAL_QUESTIONS.md)。
+
+GitHub 公开题试跑、LangGraph / Deep Agents 架构和省 Token 取舍见 [docs/LANGGRAPH_AGENT_EFFICIENCY.md](docs/LANGGRAPH_AGENT_EFFICIENCY.md)。
 
 ## 参考
 

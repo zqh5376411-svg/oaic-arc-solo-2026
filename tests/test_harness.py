@@ -36,6 +36,35 @@ class RequirementTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate"):
                 load_requirements(path)
 
+    def test_only_leaf_requirements_are_actionable(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            path = Path(value) / "requirements.yaml"
+            path.write_text(
+                "id: ROOT\nchildren:\n  - id: REQ-1\n    type: FOLDER\n"
+                "    children:\n      - id: REQ-1-1\n        type: ATOMIC\n",
+                encoding="utf-8",
+            )
+            bundle = load_requirements(path)
+            self.assertEqual(
+                [node["id"] for node in bundle.actionable_nodes], ["REQ-1-1"]
+            )
+
+    def test_assigns_stable_ids_to_scenarios_without_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            path = Path(value) / "requirements.yaml"
+            path.write_text(
+                "id: ROOT\nchildren:\n  - id: REQ-1\n    scenarios:\n"
+                "      - name: First scenario\n        steps: []\n"
+                "      - name: Second scenario\n        steps: []\n",
+                encoding="utf-8",
+            )
+            bundle = load_requirements(path)
+            scenarios = bundle.root["children"][0]["scenarios"]
+            self.assertEqual(
+                [scenario["id"] for scenario in scenarios],
+                ["REQ-1-S001", "REQ-1-S002"],
+            )
+
 
 class WorkspaceTests(unittest.TestCase):
     def setUp(self) -> None:

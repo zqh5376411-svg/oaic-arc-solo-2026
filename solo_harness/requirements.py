@@ -20,7 +20,12 @@ class RequirementBundle:
 
     @property
     def actionable_nodes(self) -> tuple[dict[str, Any], ...]:
-        return tuple(node for node in self.nodes if _node_id(node) != "ROOT")
+        return tuple(
+            node
+            for node in self.nodes
+            if _node_id(node) != "ROOT"
+            and not any(isinstance(child, dict) for child in node.get("children") or [])
+        )
 
 
 def _walk(node: dict[str, Any]) -> Iterator[dict[str, Any]]:
@@ -62,6 +67,7 @@ def load_requirements(value: str | Path) -> RequirementBundle:
         raise ValueError("ROOT must contain at least one child requirement")
 
     ids: set[str] = set()
+    scenario_ids: set[str] = set()
     for node in _walk(payload):
         node_id = _node_id(node)
         if not node_id:
@@ -71,5 +77,22 @@ def load_requirements(value: str | Path) -> RequirementBundle:
         ids.add(node_id)
         if "children" in node and not isinstance(node["children"], list):
             raise ValueError(f"children must be a list for requirement {node_id}")
+        scenarios = node.get("scenarios")
+        if scenarios is None:
+            continue
+        if not isinstance(scenarios, list):
+            raise ValueError(f"scenarios must be a list for requirement {node_id}")
+        for index, scenario in enumerate(scenarios, start=1):
+            if not isinstance(scenario, dict):
+                raise ValueError(f"scenario must be an object for requirement {node_id}")
+            scenario_id = str(
+                scenario.get("id") or scenario.get("scenario_id") or ""
+            ).strip()
+            if not scenario_id:
+                scenario_id = f"{node_id}-S{index:03d}"
+                scenario["id"] = scenario_id
+            if scenario_id in scenario_ids:
+                raise ValueError(f"duplicate scenario id: {scenario_id}")
+            scenario_ids.add(scenario_id)
 
     return RequirementBundle(source=source, root=payload)
