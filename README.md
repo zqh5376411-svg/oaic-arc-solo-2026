@@ -58,7 +58,7 @@ python3 -m venv .venv
 
 - 读取并校验 ROOT `requirements.yaml`。
 - 只把叶子需求作为执行节点，并为缺少 ID 的场景生成稳定 Traceability ID。
-- 提供 `list_files`、`read_files`、`write_file`、`replace_text`、`run_validation` 五个受限工具。
+- 提供 `list_files`、`read_files`、`write_file`、`replace_text`、`run_validation` 五个受限工具；`read_files` 支持按行窗口读取，大工具结果进入下一轮模型前有固定上下文预算。
 - 只允许 Agent 写入生成目录下的 `frontend/` 与 `backend/`。
 - 前端执行 `npm install` 和 `npm run build`；后端在随机独立端口启动并探活。
 - 如生成项目注册了 `test:e2e` 或 `test` 脚本，Harness 会在后端运行期间执行，并注入 `ARCBENCH_BASE_URL` 与 `PLAYWRIGHT_BASE_URL`。

@@ -65,19 +65,40 @@ class Workspace:
         ]
         return {"ok": True, "files": sorted(files)[:300]}
 
-    def read_files(self, paths: list[str]) -> dict[str, Any]:
+    def read_files(
+        self,
+        paths: list[str],
+        *,
+        start_line: int = 1,
+        max_lines: int | None = None,
+    ) -> dict[str, Any]:
         if not paths or len(paths) > 12:
             raise ValueError("read_files needs between 1 and 12 paths")
+        if start_line < 1:
+            raise ValueError("start_line must be at least 1")
+        if max_lines is not None and not 1 <= max_lines <= 2_000:
+            raise ValueError("max_lines must be between 1 and 2000")
         result = []
         for relative in paths:
             path = self._resolve(relative, must_exist=True)
             raw = path.read_bytes()
             if len(raw) > MAX_FILE_BYTES:
                 raise ValueError(f"file is too large to read: {relative}")
+            text = raw.decode("utf-8", errors="replace")
+            lines = text.splitlines(keepends=True)
+            start_index = start_line - 1
+            end_index = (
+                start_index + max_lines if max_lines is not None else len(lines)
+            )
+            selected = lines[start_index:end_index]
             result.append(
                 {
                     "path": Path(relative).as_posix(),
-                    "content": raw.decode("utf-8", errors="replace"),
+                    "content": "".join(selected),
+                    "start_line": start_line,
+                    "end_line": min(len(lines), start_index + len(selected)),
+                    "total_lines": len(lines),
+                    "truncated": start_index > 0 or end_index < len(lines),
                 }
             )
         return {"ok": True, "files": result}
@@ -116,7 +137,14 @@ class Workspace:
             if name == "list_files":
                 return self.list_files()
             if name == "read_files":
-                return self.read_files(list(arguments.get("paths") or []))
+                max_lines_value = arguments.get("max_lines")
+                return self.read_files(
+                    list(arguments.get("paths") or []),
+                    start_line=int(arguments.get("start_line", 1)),
+                    max_lines=(
+                        int(max_lines_value) if max_lines_value is not None else None
+                    ),
+                )
             if name == "write_file":
                 return self.write_file(
                     str(arguments.get("path") or ""),
@@ -149,7 +177,10 @@ def tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "read_files",
-                "description": "Read up to 12 text files together.",
+                "description": (
+                    "Read up to 12 text files together. Use start_line and max_lines "
+                    "for a focused window in large files."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -158,7 +189,18 @@ def tool_schemas() -> list[dict[str, Any]]:
                             "items": {"type": "string"},
                             "minItems": 1,
                             "maxItems": 12,
-                        }
+                        },
+                        "start_line": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "Optional 1-based first line; defaults to 1.",
+                        },
+                        "max_lines": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 2000,
+                            "description": "Optional maximum lines to return per file.",
+                        },
                     },
                     "required": ["paths"],
                 },

@@ -12,6 +12,10 @@ from .validation import ValidationReport, Validator
 from .workspace import Workspace, tool_schemas
 
 
+MAX_MODEL_TOOL_RESULT_CHARS = 16_000
+_MODEL_TOOL_RESULT_PREVIEW_CHARS = MAX_MODEL_TOOL_RESULT_CHARS // 4
+
+
 SYSTEM_PROMPT = """You are a coding agent inside a scored ARC-Bench harness.
 Implement the supplied requirements in the existing frontend/ and backend/ application.
 
@@ -26,6 +30,7 @@ Rules:
 - Do not use alert(), confirm(), prompt(), screenshots, hard-coded test answers, or hidden-test guesses.
 - Add focused project-owned tests for requirement scenarios and API error cases when practical. Register them as a frontend/backend `test:e2e` or `test` script; target ARCBENCH_BASE_URL or PLAYWRIGHT_BASE_URL supplied by validation instead of starting another server.
 - Make the smallest coherent change. Read related files together, then write them in batches.
+- Keep model context focused: if a file or log is large, use read_files with start_line and max_lines to inspect only the needed line window.
 - Call run_validation once after the planned edits and repair every reported failure before stopping.
 Return a short summary only after the implementation is ready."""
 
@@ -142,12 +147,24 @@ class CodingAgent:
                     arguments=arguments,
                     result=result,
                 )
+                model_content, was_compacted, original_chars = _model_tool_content(
+                    result
+                )
+                if was_compacted:
+                    self.runtime.trace(
+                        "model_context_compacted",
+                        phase=phase,
+                        turn=self.turns,
+                        tool=name,
+                        original_chars=original_chars,
+                        context_chars=len(model_content),
+                    )
                 messages.append(
                     {
                         "role": "tool",
                         "tool_call_id": call_id,
                         "name": name,
-                        "content": json.dumps(result, ensure_ascii=False),
+                        "content": model_content,
                     }
                 )
 
@@ -173,3 +190,35 @@ def _content_text(value: Any) -> str:
             for item in value
         ).strip()
     return ""
+
+
+def _model_tool_content(result: dict[str, Any]) -> tuple[str, bool, int]:
+    """Return a bounded projection of a tool result for the next model turn."""
+    raw = json.dumps(result, ensure_ascii=False)
+    if len(raw) <= MAX_MODEL_TOOL_RESULT_CHARS:
+        return raw, False, len(raw)
+
+    preview = _shorten_text(raw, _MODEL_TOOL_RESULT_PREVIEW_CHARS)
+    compacted = json.dumps(
+        {
+            "ok": bool(result.get("ok")),
+            "truncated": True,
+            "original_chars": len(raw),
+            "preview": preview,
+            "next_action": (
+                "Use read_files with start_line and max_lines to inspect a smaller "
+                "file window when more detail is needed."
+            ),
+        },
+        ensure_ascii=False,
+    )
+    return compacted, True, len(raw)
+
+
+def _shorten_text(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    marker = "\n…[tool output shortened]…\n"
+    head = (limit - len(marker)) // 2
+    tail = limit - len(marker) - head
+    return value[:head] + marker + value[-tail:]

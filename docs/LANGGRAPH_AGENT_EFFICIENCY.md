@@ -56,6 +56,20 @@ LangGraph 是低层编排运行时，主打把确定性代码步骤和 LLM 步�
 
 来源：[Deep Agents context engineering](https://docs.langchain.com/oss/python/deepagents/context-engineering)｜[Subagents](https://docs.langchain.com/oss/python/deepagents/subagents)
 
+## Pi 小型智能体：这次实际借了什么
+
+截至 2026-09-20，原 `badlogic/pi-mono` 已转到 [earendil-works/pi](https://github.com/earendil-works/pi)。它现在是包含模型适配、Agent core、CLI 和 TUI 的单仓库，并不应整包搬进我们的 Python Harness；但其 `pi-agent-core` 的核心循环把“执行工具”和“准备下一轮上下文”分开，正好适合借鉴。[Pi README](https://github.com/earendil-works/pi/blob/main/README.md)｜[Agent loop](https://github.com/earendil-works/pi/blob/main/packages/agent/src/agent-loop.ts)
+
+Pi 的文档明确要求自定义工具输出截断，并用完整输出路径提示 Agent 按需继续读取；其示例上限是 50KB 或 2,000 行。它还会在工具结果进入下一轮前检查上下文阈值，再压缩旧历史，而不是等模型已经被长日志淹没。[Truncated tool example](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/examples/extensions/truncated-tool.ts)｜[Compaction docs](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/compaction.md)
+
+因此本 Harness 只做了对应的窄改动：
+
+- `read_files` 新增 `start_line` / `max_lines`，让 Agent 能按窗口读取所需代码，而不是一次把整份大文件塞进上下文。
+- 任一工具返回超过 16,000 字符时，下一轮模型只收到带原始长度、首尾预览和补读提示的 JSON；执行结果仍先完成，且 Trace 会记录 `model_context_compacted` 事件。
+- 不引入 Pi 的 TUI、多 Provider、扩展加载器、长会话数据库或子 Agent。我们当前只有 5 个受限工具，这些依赖会增加赛事启动和兼容风险。
+
+这不是“宣称节省了多少 Token”：没有赛事网关的 usage 数据前，只能证明上下文大小被硬限制，真实费用和通过率仍需在可用网关上对比测量。
+
 ## 公开参赛实现给我们的启发
 
 这些是参赛者工程样本，不是官方标准：

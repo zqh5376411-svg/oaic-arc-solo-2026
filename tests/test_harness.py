@@ -9,7 +9,7 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import Mock, patch
 
-from solo_harness.agent import CodingAgent
+from solo_harness.agent import CodingAgent, MAX_MODEL_TOOL_RESULT_CHARS
 from solo_harness.model import OpenAIChatClient
 from solo_harness.requirements import load_requirements
 from solo_harness.runtime import Runtime
@@ -89,6 +89,22 @@ class WorkspaceTests(unittest.TestCase):
             (self.root / "frontend/src/note.txt").read_text(encoding="utf-8"),
             "new value",
         )
+
+    def test_reads_a_bounded_line_window(self) -> None:
+        self.workspace.write_file(
+            "frontend/src/note.txt", "first\nsecond\nthird\nfourth\n"
+        )
+
+        result = self.workspace.read_files(
+            ["frontend/src/note.txt"], start_line=2, max_lines=2
+        )
+
+        file = result["files"][0]
+        self.assertEqual(file["content"], "second\nthird\n")
+        self.assertEqual(file["start_line"], 2)
+        self.assertEqual(file["end_line"], 3)
+        self.assertEqual(file["total_lines"], 4)
+        self.assertTrue(file["truncated"])
 
     def test_rejects_paths_outside_generated_sources(self) -> None:
         with self.assertRaises(ValueError):
@@ -219,6 +235,80 @@ class ValidationTests(unittest.TestCase):
             self.assertTrue(outcome.passed, outcome.report.summary)
             self.assertIn("frontend/src/index.html", outcome.changed_files)
             self.assertEqual(outcome.turns, 2)
+
+    def test_compacts_large_tool_results_before_the_next_model_turn(self) -> None:
+        case = self
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def complete(self, messages: list[dict], tools: list[dict]) -> dict:
+                self.calls += 1
+                if self.calls == 1:
+                    return {
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call-read-large",
+                                "type": "function",
+                                "function": {
+                                    "name": "read_files",
+                                    "arguments": json.dumps(
+                                        {"paths": ["frontend/src/large.txt"]}
+                                    ),
+                                },
+                            }
+                        ],
+                    }
+                if self.calls == 2:
+                    tool_result = messages[-1]["content"]
+                    compacted = json.loads(tool_result)
+                    case.assertLessEqual(len(tool_result), MAX_MODEL_TOOL_RESULT_CHARS)
+                    case.assertTrue(compacted["truncated"])
+                    case.assertGreater(
+                        compacted["original_chars"], MAX_MODEL_TOOL_RESULT_CHARS
+                    )
+                    return {
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call-edit",
+                                "type": "function",
+                                "function": {
+                                    "name": "replace_text",
+                                    "arguments": json.dumps(
+                                        {
+                                            "path": "frontend/src/index.html",
+                                            "old": "Ready for requirements",
+                                            "new": "Demo requirement implemented",
+                                        }
+                                    ),
+                                },
+                            }
+                        ],
+                    }
+                return {"content": "Implementation complete."}
+
+        with tempfile.TemporaryDirectory() as value:
+            root = Path(value)
+            scaffold_project(REPO_ROOT / "templates" / "web", root)
+            (root / "frontend" / "src" / "large.txt").write_text(
+                "x" * (MAX_MODEL_TOOL_RESULT_CHARS + 2_000), encoding="utf-8"
+            )
+            runtime = Runtime(root)
+            agent = CodingAgent(
+                FakeClient(),  # type: ignore[arg-type]
+                Workspace(root),
+                Validator(root),
+                runtime,
+            )
+
+            outcome = agent.run(load_requirements(REPO_ROOT / "examples").root)
+
+            self.assertTrue(outcome.passed, outcome.report.summary)
+            trace = runtime.production_trace_path.read_text(encoding="utf-8")
+            self.assertIn('"type": "model_context_compacted"', trace)
 
     def test_runs_project_owned_test_against_live_server(self) -> None:
         with tempfile.TemporaryDirectory() as value:
